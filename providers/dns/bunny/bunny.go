@@ -6,10 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"time"
+	"net/url"
+	"strings"
 
 	"github.com/go-acme/lego/v4/challenge/dns01"
 	"github.com/go-acme/lego/v4/platform/config/env"
-	"github.com/simplesurance/bunny-go"
+	"github.com/nrdcg/bunny-go"
 )
 
 const minTTL = 60
@@ -99,12 +101,13 @@ func (d *DNSProvider) Present(domain, token, keyAuth string) error {
 	ctx := context.Background()
 
 	zone, err := d.findZone(ctx, authZone)
-	if err != nil {
+	if err != nil {		
 		return fmt.Errorf("bunny: %w", err)
 	}
 
 	subDomain, err := dns01.ExtractSubDomain(info.EffectiveFQDN, authZone)
 	if err != nil {
+		fmt.Println("test1")
 		return fmt.Errorf("bunny: %w", err)
 	}
 
@@ -140,8 +143,9 @@ func (d *DNSProvider) CleanUp(domain, token, keyAuth string) error {
 
 	subDomain, err := dns01.ExtractSubDomain(info.EffectiveFQDN, authZone)
 	if err != nil {
+		fmt.Println("test2")
 		return fmt.Errorf("bunny: %w", err)
-	}
+	}	
 
 	var record *bunny.DNSRecord
 	for _, r := range zone.Records {
@@ -163,16 +167,39 @@ func (d *DNSProvider) CleanUp(domain, token, keyAuth string) error {
 	return nil
 }
 
+func getDomain(authZone string) (string, error) {
+	u, err := url.Parse("https://"+authZone)
+	if err != nil {
+			return "", err
+	}
+	parts := strings.Split(u.Hostname(), ".")
+	actualDomain := parts[len(parts)-2]+"."+parts[len(parts)-1]
+	/*fmt.Println("u: ", u)
+	fmt.Println("Hostname: ", u.Hostname())
+	fmt.Println("Parts", parts)
+	fmt.Println("actualDomain", actualDomain)
+	fmt.Println("record name: ", domain, "?authzone=", actualDomain)*/
+
+	return actualDomain, nil
+}
+
 func (d *DNSProvider) findZone(ctx context.Context, authZone string) (*bunny.DNSZone, error) {
 	zones, err := d.client.DNSZone.List(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	var zone *bunny.DNSZone
-	for _, item := range zones.Items {
-		if item != nil && deref(item.Domain) == authZone {
-			zone = item
+	actualDomain, err := getDomain(authZone)
+	if (err != nil) {
+		return nil, err
+	}
+
+	var zone *bunny.DNSZone	
+	for _, item := range zones.Items {	
+		domain := *item.Domain	
+		
+		if item != nil && domain == actualDomain {			
+			zone = item			
 			break
 		}
 	}
@@ -185,12 +212,10 @@ func (d *DNSProvider) findZone(ctx context.Context, authZone string) (*bunny.DNS
 }
 
 func getZone(fqdn string) (string, error) {
-	authZone, err := dns01.FindZoneByFqdn(fqdn)
-	if err != nil {
-		return "", err
-	}
-
-	return dns01.UnFqdn(authZone), nil
+	fmt.Println("fqdn", fqdn)
+	domain, err := getDomain(strings.Trim(fqdn,"."))
+	fmt.Println("domain", domain)
+	return domain, err
 }
 
 func pointer[T string | int | int32 | int64](v T) *T { return &v }
